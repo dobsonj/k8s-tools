@@ -1,0 +1,110 @@
+- name: Setup k8s dependencies
+  hosts: all
+  become: true
+
+  vars:
+    arch: amd64
+    os: linux
+    dist: ubuntu
+    release: focal
+    go_version: "latest"
+
+    docker_repo: deb [arch={{ arch }}] https://download.docker.com/{{ os }}/{{ dist }} {{ release }} stable
+    go_latest_version_url: "https://golang.org/VERSION?m=text"
+    go_archive_name: "{{ filename_prefix }}.{{ os }}-{{ arch }}.tar.gz"
+    go_download_url: https://dl.google.com/go/{{ go_archive_name }}
+    go_bin_path: /usr/local/go/bin
+    go_path: ~/go
+    bashrc_path: ~/.bashrc
+    k8s_repo: https://github.com/kubernetes/kubernetes
+    k8s_path: ~/go/src/k8s.io/kubernetes
+
+  tasks:
+    - name: Add docker gpg key
+      apt_key:
+        url: https://download.docker.com/linux/ubuntu/gpg
+
+    - name: Add Docker apt repo
+      apt_repository:
+        repo: "{{ docker_repo }}"
+
+    - name: Upgrade apt packages
+      apt:
+        upgrade: yes
+        update_cache: yes
+        cache_valid_time: 3600
+
+    - name: Install apt packages
+      apt:
+        pkg:
+        - vim
+        - git
+        - build-essential
+        - gcc
+        - jq
+        - net-tools
+        - docker-ce
+        - docker-ce-cli
+        - containerd.io
+
+    - name: Get latest go version from {{ go_latest_version_url }}
+      set_fact:
+        filename_prefix: "{{ lookup('url', go_latest_version_url, split_lines=False) }}"
+      when: go_version == "latest"
+
+    - name: Get filename prefix for go {{ go_version }}
+      set_fact:
+        filename_prefix: go{{ go_version }}
+      when: go_version != "latest"
+
+    - name: Download and extract {{ go_archive_name }}
+      become: true
+      unarchive:
+        src: "{{ go_download_url }}"
+        dest: /usr/local
+        remote_src: yes
+
+    - name: Add ubuntu user to docker group
+      user:
+        name: ubuntu
+        group: docker
+
+    - name: Create go directories
+      file:
+        path: "{{ item }}"
+        state: directory
+      with_items:
+          - "{{ go_path }}"
+          - "{{ go_path }}/bin"
+          - "{{ go_path }}/src"
+          - "{{ go_path }}/src/k8s.io"
+
+    - name: Clone {{ k8s_repo }}
+      git:
+        repo: "{{ k8s_repo }}"
+        dest: "{{ k8s_path }}"
+        clone: yes
+        update: no
+
+    - name: Install etcd
+      shell: "{{ k8s_path }}/hack/install-etcd.sh"
+
+    - name: Update {{ bashrc_path }}
+      lineinfile:
+        dest: "{{ bashrc_path }}"
+        line: "{{ item }}"
+      with_items:
+        - "alias kubectl='{{ k8s_path }}/cluster/kubectl.sh'"
+        - "alias k='{{ k8s_path }}/cluster/kubectl.sh'"
+        - "alias local-up-cluster='{{ k8s_path }}/hack/local-up-cluster.sh'"
+        - "export GOPATH={{ go_path }}"
+        - "export PATH=$PATH:$GOPATH/bin:{{ go_bin_path }}"
+        - "export PATH={{ k8s_path }}/third_party/etcd:$PATH"
+        - "export HOSTNAME_OVERRIDE=`hostname --long`"
+        - "export ALLOW_PRIVILEGED=true"
+        - "export CLOUD_PROVIDER=aws"
+        - "export LOG_LEVEL=5"
+
+    - name: Install delve debugger
+      shell: "{{ go_bin_path }}/go install github.com/go-delve/delve/cmd/dlv@latest"
+
