@@ -10,9 +10,9 @@
     go_version: "latest"
 
     docker_repo: deb [arch={{ arch }}] https://download.docker.com/{{ os }}/{{ dist }} {{ release }} stable
-    go_latest_version_url: "https://golang.org/VERSION?m=text"
+    go_latest_version_url: "https://go.dev/VERSION?m=text"
     go_archive_name: "{{ filename_prefix }}.{{ os }}-{{ arch }}.tar.gz"
-    go_download_url: https://dl.google.com/go/{{ go_archive_name }}
+    go_download_url: https://go.dev/dl/{{ go_archive_name }}
     go_bin_path: /usr/local/go/bin
     go_path: ~/go
     bashrc_path: ~/.bashrc
